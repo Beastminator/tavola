@@ -69,6 +69,21 @@ export const payments = pgTable("payments", {
   voidedAt: timestamp("voided_at", { withTimezone: true }),
 });
 
+/** Zorkasm score: one rating (1–10) + optional review per person per meal. */
+export const ratings = pgTable(
+  "ratings",
+  {
+    id: serial("id").primaryKey(),
+    mealId: integer("meal_id").notNull().references(() => meals.id),
+    memberId: integer("member_id").notNull().references(() => members.id),
+    score: integer("score").notNull(),
+    review: text("review"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("ratings_meal_member_idx").on(t.mealId, t.memberId)],
+);
+
 export type ActivityPayload = {
   text: string;
   expenseId?: number;
@@ -90,3 +105,4 @@ export type Signup = typeof signups.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type Activity = typeof activity.$inferSelect;
+export type Rating = typeof ratings.$inferSelect;

@@ -5,6 +5,8 @@ import { formatEuro } from "@/lib/money";
 import { countdown, formatDay, formatRome, relativeDay } from "@/lib/time";
 import { setAttendance } from "@/app/actions";
 import { AvatarStack } from "./Avatar";
+import { ZorkasmChip } from "./Zorkasm";
+import type { ZorkasmSummary } from "@/lib/zorkasm";
 import { SubmitButton } from "./ui";
 
 export function SlotBadge({ slot }: { slot: Meal["slot"] }) {
@@ -21,12 +23,14 @@ export function MealCard({
   me,
   summary,
   past,
+  zorkasm,
 }: {
   meal: Meal;
   attendees: Member[];
   me: Member;
   summary: MealSummary;
   past?: boolean;
+  zorkasm?: ZorkasmSummary;
 }) {
   const now = new Date();
   const locked = now >= meal.signupDeadline;
@@ -49,7 +53,10 @@ export function MealCard({
               {formatDay(meal.date)}
             </h3>
           </div>
-          <span className="text-muted">›</span>
+          <span className="flex items-center gap-2">
+            {zorkasm && <ZorkasmChip summary={zorkasm} />}
+            <span className="text-muted">›</span>
+          </span>
         </div>
 
         {cancelled ? (

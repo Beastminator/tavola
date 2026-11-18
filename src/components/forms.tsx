@@ -2,7 +2,15 @@
 
 import { useActionState, useRef, useEffect } from "react";
 import type { Member } from "@/db/schema";
-import { addExpense, createMeals, createMember, updateMeal, updateProfile, type FormState } from "@/app/actions";
+import {
+  addExpense,
+  createMeals,
+  createMember,
+  rateMeal,
+  updateMeal,
+  updateProfile,
+  type FormState,
+} from "@/app/actions";
 import { SubmitButton } from "./ui";
 
 function Message({ state }: { state: FormState }) {
@@ -219,6 +227,48 @@ export function ExpenseForm({ mealId, me, members }: { mealId: number; me: Membe
       <Message state={state} />
       <SubmitButton className="btn-primary w-full" pendingText="Adding…">
         Add groceries
+      </SubmitButton>
+    </form>
+  );
+}
+
+export function RatingForm({
+  mealId,
+  score,
+  review,
+}: {
+  mealId: number;
+  score?: number;
+  review?: string | null;
+}) {
+  const [state, action] = useActionState(rateMeal, undefined);
+  return (
+    <form action={action} className="space-y-3">
+      <input type="hidden" name="mealId" value={mealId} />
+      <fieldset>
+        <legend className="label">Your Zorkasm score</legend>
+        <div className="grid grid-cols-5 gap-2">
+          {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+            <label
+              key={n}
+              className="flex cursor-pointer items-center justify-center rounded-xl border border-line bg-card py-2 font-display text-lg font-bold has-[:checked]:border-accent has-[:checked]:bg-accent has-[:checked]:text-accent-ink"
+            >
+              <input type="radio" name="score" value={n} defaultChecked={score === n} className="sr-only" required />
+              {n}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <textarea
+        name="review"
+        defaultValue={review ?? ""}
+        className="field min-h-20"
+        placeholder="Review (optional): the carbonara was life-changing…"
+        maxLength={500}
+      />
+      <Message state={state} />
+      <SubmitButton className="btn-primary w-full" pendingText="Saving…">
+        {score ? "Update rating" : "Rate it"}
       </SubmitButton>
     </form>
   );

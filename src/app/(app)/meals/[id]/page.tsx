@@ -5,12 +5,14 @@ import { requireMember } from "@/lib/auth";
 import { loadGroup } from "@/lib/data";
 import { summarizeMeal } from "@/lib/ledger";
 import { formatEuro } from "@/lib/money";
-import { formatDay, formatRome, relativeDay } from "@/lib/time";
-import { setAttendance, setMealCancelled, voidExpense } from "@/app/actions";
+import { formatDay, formatRome, relativeDay, todayRome } from "@/lib/time";
+import { canRate, summarizeRatings } from "@/lib/zorkasm";
+import { removeRating, setAttendance, setMealCancelled, voidExpense } from "@/app/actions";
+import { ReviewList, ZorkasmScore } from "@/components/Zorkasm";
 import { SlotBadge } from "@/components/MealCard";
 import { Avatar } from "@/components/Avatar";
 import { PayCard } from "@/components/PayCard";
-import { ExpenseForm, MealEditForm } from "@/components/forms";
+import { ExpenseForm, MealEditForm, RatingForm } from "@/components/forms";
 import { SubmitButton } from "@/components/ui";
 
 export default async function MealPage({ params }: { params: Promise<{ id: string }> }) {
@@ -40,7 +42,12 @@ export default async function MealPage({ params }: { params: Promise<{ id: strin
   const origin = `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
   const shareText = `🍝 ${title}${meal.notes ? ` — ${meal.notes}` : ""}\nSign up by ${formatRome(meal.signupDeadline, "EEE HH:mm")}: ${origin}/meals/${meal.id}`;
 
-  const myDebts = summary.debts.filter((d) => d.fromId === me.id && d.paidCents < d.amountCents);
+  const rateable = canRate(meal, todayRome());
+  const ratings = g.ratings.filter((r) => r.mealId === meal.id);
+  const zorkasm = summarizeRatings(ratings);
+  const myRating = ratings.find((r) => r.memberId === me.id);
+
+  const myDebts =summary.debts.filter((d) => d.fromId === me.id && d.paidCents < d.amountCents);
   const owedToMe = summary.debts.filter((d) => d.toId === me.id && d.paidCents < d.amountCents);
 
   return (
@@ -150,6 +157,31 @@ export default async function MealPage({ params }: { params: Promise<{ id: strin
           </div>
         )}
       </section>
+
+      {/* Zorkasm */}
+      {rateable && (
+        <section className="card space-y-4 p-4">
+          <h2 className="font-semibold">🔥 Zorkasm score</h2>
+          <ZorkasmScore summary={zorkasm} />
+          <ReviewList ratings={ratings} memberById={g.memberById} meId={me.id} />
+          {!isCook && (
+            <details open={!myRating} className="border-t border-line pt-3">
+              <summary className="cursor-pointer text-sm font-semibold text-accent">
+                {myRating ? `Your score: ${myRating.score}/10 · edit` : "+ Rate this meal"}
+              </summary>
+              <div className="mt-3 space-y-2">
+                <RatingForm mealId={meal.id} score={myRating?.score} review={myRating?.review} />
+                {myRating && (
+                  <form action={removeRating}>
+                    <input type="hidden" name="mealId" value={meal.id} />
+                    <SubmitButton className="w-full text-xs font-semibold text-bad">Remove my rating</SubmitButton>
+                  </form>
+                )}
+              </div>
+            </details>
+          )}
+        </section>
+      )}
 
       {/* Money */}
       {!isCook && (

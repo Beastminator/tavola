@@ -5,6 +5,7 @@ import { computeBalances, summarizeMeal } from "@/lib/ledger";
 import { formatEuro } from "@/lib/money";
 import { todayRome } from "@/lib/time";
 import { MealCard } from "@/components/MealCard";
+import { summarizeRatings } from "@/lib/zorkasm";
 import { Avatar } from "@/components/Avatar";
 
 export default async function MealsPage() {
@@ -66,7 +67,12 @@ export default async function MealsPage() {
 
       {past.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Past</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Past</h2>
+            <Link href="/history" className="text-sm font-semibold text-accent">
+              All history ›
+            </Link>
+          </div>
           {past.map((m) => (
             <MealCard
               key={m.id}
@@ -74,6 +80,7 @@ export default async function MealsPage() {
               attendees={attendeesOf(m.id)}
               me={me}
               summary={summarizeMeal(m.id, g.ledger)}
+              zorkasm={summarizeRatings(g.ratings.filter((r) => r.mealId === m.id))}
               past
             />
           ))}
