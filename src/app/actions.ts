@@ -10,6 +10,7 @@ import { requireMember, setSession, getSession } from "@/lib/auth";
 import { parseEuro, formatEuro } from "@/lib/money";
 import { DEFAULT_DEADLINE, formatDay, romeToUtc, todayRome } from "@/lib/time";
 import { isValidIban, normalizeIban } from "@/lib/epc";
+import { canRate, MAX_SCORE, MIN_SCORE } from "@/lib/zorkasm";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -220,6 +221,53 @@ export async function setAttendance(formData: FormData) {
         mealId: meal.id,
       });
     }
+  }
+  refresh();
+}
+
+// ---------- Zorkasm ratings ----------
+
+export async function rateMeal(_: FormState, formData: FormData): Promise<FormState> {
+  const me = await requireMember();
+  const meal = await mealOrThrow(intId.parse(formData.get("mealId")));
+  if (me.kind === "cook") return { error: "No rating your own cooking 😉" };
+  if (!canRate(meal, todayRome())) return { error: "You can rate a meal once it has happened." };
+  const parsed = z.coerce.number().int().min(MIN_SCORE).max(MAX_SCORE).safeParse(formData.get("score"));
+  if (!parsed.success) return { error: `Pick a score from ${MIN_SCORE} to ${MAX_SCORE}.` };
+  const score = parsed.data;
+  const review = String(formData.get("review") ?? "").trim().slice(0, 500) || null;
+  const db = await getDb();
+  const [existing] = await db
+    .select()
+    .from(schema.ratings)
+    .where(and(eq(schema.ratings.mealId, meal.id), eq(schema.ratings.memberId, me.id)));
+  await db
+    .insert(schema.ratings)
+    .values({ mealId: meal.id, memberId: me.id, score, review })
+    .onConflictDoUpdate({
+      target: [schema.ratings.mealId, schema.ratings.memberId],
+      set: { score, review, updatedAt: new Date() },
+    });
+  if (!existing || existing.score !== score) {
+    await log(me.id, "rating", {
+      text: `${me.name} ${existing ? "changed their Zorkasm to" : "gave"} ${score}/10${existing ? "" : " Zorkasm"} for ${mealLabel(meal)}`,
+      mealId: meal.id,
+    });
+  }
+  refresh();
+  return { ok: existing ? "Updated" : "Thanks for rating" };
+}
+
+export async function removeRating(formData: FormData) {
+  const me = await requireMember();
+  const meal = await mealOrThrow(intId.parse(formData.get("mealId")));
+  const db = await getDb();
+  const removed = await db
+    .delete(schema.ratings)
+    .where(and(eq(schema.ratings.mealId, meal.id), eq(schema.ratings.memberId, me.id)))
+    .returning();
+  if (removed.length) {
+    await log(me.id, "rating_removed", { text: `${me.name} removed their rating for ${mealLabel(meal)}`, mealId: meal.id });
   }
   refresh();
 }

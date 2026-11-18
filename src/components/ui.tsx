@@ -43,6 +43,7 @@ export function CopyButton({ value, label = "Copy" }: { value: string; label?: s
 const TABS = [
   { href: "/", label: "Meals", icon: "🍝" },
   { href: "/schedule", label: "Plan", icon: "🗓️" },
+  { href: "/history", label: "History", icon: "🏆" },
   { href: "/balances", label: "Money", icon: "💶" },
   { href: "/activity", label: "Feed", icon: "📜" },
   { href: "/me", label: "Me", icon: "🙂" },
