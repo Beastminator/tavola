@@ -4,6 +4,7 @@ import { useActionState, useRef, useEffect } from "react";
 import type { Member } from "@/db/schema";
 import {
   addExpense,
+  addNewPersonToMeal,
   createMeals,
   createMember,
   rateMeal,
@@ -335,6 +336,31 @@ export function MealEditForm({
       <SubmitButton className="btn-ghost w-full" pendingText="Saving…">
         Save changes
       </SubmitButton>
+    </form>
+  );
+}
+
+/** Add someone who has never opened the app to a meal, by name. */
+export function NewPersonForm({ mealId }: { mealId: number }) {
+  const [state, action] = useActionState(addNewPersonToMeal, undefined);
+  const ref = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (state?.ok) ref.current?.reset();
+  }, [state]);
+  return (
+    <form ref={ref} action={action} className="space-y-2">
+      <input type="hidden" name="mealId" value={mealId} />
+      <div className="flex gap-2">
+        <input name="name" className="field" placeholder="New person's name" maxLength={30} required aria-label="New person's name" />
+        <SubmitButton className="btn-ghost whitespace-nowrap" pendingText="…">
+          Add new
+        </SubmitButton>
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" name="guest" value="1" className="size-4 accent-[var(--accent)]" />
+        Guest (not a regular)
+      </label>
+      <Message state={state} />
     </form>
   );
 }

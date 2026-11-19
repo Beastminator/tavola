@@ -70,6 +70,28 @@ export async function createMember(_: FormState, formData: FormData): Promise<Fo
   redirect(safeNext(String(formData.get("next") ?? "")) ?? "/me?welcome=1");
 }
 
+/**
+ * Adds someone who isn't in the app yet (never opened the invite) and signs them up for a meal, so
+ * their share is counted. Later they open the invite link and just pick their name from the list.
+ */
+export async function addNewPersonToMeal(_: FormState, formData: FormData): Promise<FormState> {
+  const me = await requireMember();
+  const meal = await mealOrThrow(intId.parse(formData.get("mealId")));
+  const name = String(formData.get("name") ?? "").trim().replace(/\s+/g, " ");
+  const kind = formData.get("guest") === "1" ? "guest" : "member";
+  if (name.length < 2 || name.length > 30) return { error: "Name must be 2–30 characters." };
+  const db = await getDb();
+  const nameKey = name.toLowerCase();
+  let [person] = await db.select().from(schema.members).where(eq(schema.members.nameKey, nameKey));
+  if (!person) {
+    [person] = await db.insert(schema.members).values({ name, nameKey, kind }).returning();
+    await log(me.id, "member_joined", { text: `${me.name} added ${name}${kind === "guest" ? " (guest)" : ""} to Tavola` });
+  }
+  const added = await joinMeal(me, person, meal);
+  refresh();
+  return added ? { ok: `Added ${person.name}` } : { error: `${person.name} is already on this meal.` };
+}
+
 export async function switchPerson() {
   await setSession(undefined);
   redirect("/welcome");

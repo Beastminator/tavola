@@ -23,7 +23,7 @@ import { ReviewList, ZorkasmScore } from "@/components/Zorkasm";
 import { SlotBadge, joinLabel } from "@/components/MealCard";
 import { Avatar } from "@/components/Avatar";
 import { PayCard } from "@/components/PayCard";
-import { ExpenseForm, MealEditForm, RatingForm } from "@/components/forms";
+import { ExpenseForm, MealEditForm, NewPersonForm, RatingForm } from "@/components/forms";
 import { SubmitButton } from "@/components/ui";
 
 const shortLabel = (m: Pick<Meal, "date" | "slot">) => `${m.slot === "lunch" ? "Lunch" : "Dinner"} ${formatDay(m.date)}`;
@@ -224,7 +224,7 @@ export default async function MealPage({
           ))}
         </ul>
 
-        {!cancelled && (notAttending.some((m) => m.id !== me.id) || attendees.some((a) => a.id !== me.id)) && (
+        {!cancelled && (
           <details className="mt-3">
             <summary className="cursor-pointer text-sm font-semibold text-accent">Add or remove someone</summary>
             <div className="mt-2 space-y-2">
@@ -260,9 +260,13 @@ export default async function MealPage({
                   <SubmitButton className="btn-ghost text-bad">Remove</SubmitButton>
                 </form>
               )}
-              <p className="text-xs text-muted">
-                New guests open the invite link themselves so they get their own payment.
-              </p>
+              <div className="border-t border-line pt-2">
+                <p className="mb-1 text-xs font-semibold text-muted">Not in the app yet?</p>
+                <NewPersonForm mealId={meal.id} />
+                <p className="mt-1 text-xs text-muted">
+                  Their share is counted right away. When they open the invite link later, they just pick their name.
+                </p>
+              </div>
             </div>
           </details>
         )}
