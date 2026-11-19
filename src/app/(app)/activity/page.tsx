@@ -14,6 +14,7 @@ const ICON: Record<string, string> = {
   meal_updated: "✏️",
   meal_cancelled: "🚫",
   meal_reopened: "🔄",
+  meal_deleted: "🗑️",
   signup: "🙋",
   unsignup: "🚶",
   expense_added: "🛒",
