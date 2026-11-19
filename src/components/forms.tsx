@@ -72,6 +72,25 @@ export function ProfileForm({ me }: { me: Member }) {
         </div>
         <p className="mt-1 text-xs text-muted">The cook eats free and is left out of cost splitting.</p>
       </div>
+      {me.kind !== "cook" && (
+        <label className="flex cursor-pointer gap-3 rounded-2xl border border-line p-3 has-[:checked]:border-ok has-[:checked]:bg-ok-soft">
+          <input
+            type="checkbox"
+            name="usuallyIn"
+            value="1"
+            defaultChecked={me.usuallyIn}
+            className="mt-0.5 size-5 shrink-0 accent-[var(--ok)]"
+          />
+          <span>
+            <span className="block font-semibold">I&apos;m usually in</span>
+            <span className="block text-xs text-muted">
+              You&apos;re signed up for every meal automatically, including ones already planned. Just tap
+              &quot;Can&apos;t make it&quot; when you won&apos;t be there. Turning it off doesn&apos;t remove you from
+              meals you&apos;re already on.
+            </span>
+          </span>
+        </label>
+      )}
       <fieldset className="space-y-3 rounded-2xl border border-line p-3">
         <legend className="px-1 text-sm font-semibold">How people pay you back</legend>
         <div>

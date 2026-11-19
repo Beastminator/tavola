@@ -9,6 +9,8 @@ import { MealRow, NextMealCard, joinLabel } from "@/components/MealCard";
 import { Avatar } from "@/components/Avatar";
 import { SubmitButton } from "@/components/ui";
 import { setAttendance } from "@/app/actions";
+import { NotificationNudge } from "@/components/Notifications";
+import { pushPublicKey } from "@/lib/push";
 
 type Todo = { key: string; href: string; text: string; icon: string; ateMeal?: Meal };
 
@@ -71,6 +73,8 @@ export default async function MealsPage() {
           </Link>
         </div>
       )}
+
+      <NotificationNudge publicKey={pushPublicKey()} />
 
       {me.kind !== "cook" && myBalance !== 0 && (
         <Link href="/balances" className="flex items-center justify-between px-1 text-sm">

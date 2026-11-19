@@ -4,6 +4,8 @@ A small mobile-first web app for a friend group that eats lunches and dinners to
 
 - **Plan meals.** Anyone ticks the lunches and dinners happening over the next 2 weeks. Each meal has a sign-up deadline.
 - **Sign up.** The Meals tab opens on the next meal with one big button: "I'm in" before the deadline, "I'm eating" on the day, "I ate this" afterwards. Late changes are always allowed (with a warning). Forgot to log yesterday's meal? The home page asks "Ate dinner Wed?" with a one-tap button.
+- **Usually in.** Tick "I'm usually in" on the Me page and you're signed up for every newly planned meal automatically (and for already-planned meals whose sign-up is still open). You only tap "Can't make it" when you won't be there. Leftover meals and the cook are never auto-signed up.
+- **Notifications.** Turn them on from the Me page (or the nudge on the Meals tab) to get a push notification whenever someone plans meals: one per planning batch, never to the person who planned. "Usually in" people are told they're already in. On iPhone this needs Tavola added to the home screen first (iOS 16.4+). "Send me a test" on the Me page checks it works.
 - **Scan to log.** Every meal page has a QR code (📷 section) to show at the table. Scanning it with a phone camera logs that person as eating the meal in one go, with an Undo. The QR goes through the invite link, so a phone that isn't in the group yet picks a name first and is then logged. Since it includes the invite, only show it to people at the table.
 - **Cook view.** The cook marks herself as *cook* on the Me page and sees "Cook for N" for each meal (leftover meals don't need cooking, so they don't show it). She eats free and is never charged.
 - **Split costs.** Whoever bought groceries adds the receipt total to the meal. It's split equally among the people who signed up. Remainder cents go to the earliest sign-ups, so shares always add up exactly.
@@ -56,6 +58,7 @@ Schema changes: edit `src/db/schema.ts`, then run `npm run db:generate` to creat
 4. Add these environment variables:
    - `GROUP_INVITE_TOKEN`: a long random string. It becomes the secret part of the invite link.
    - `SESSION_SECRET`: generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+   - Optional, for notifications: `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` (generate with `npx web-push generate-vapid-keys`) and `VAPID_SUBJECT` (your app's https URL). Without them the app works and simply sends no notifications.
 5. Deploy. The build runs the migrations, then builds the app.
 6. Share `https://<your-app>.vercel.app/join/<GROUP_INVITE_TOKEN>` in the group chat.
 
@@ -66,8 +69,10 @@ src/lib/ledger.ts      split / leftovers portions / balances / settle-up (pure, 
 src/lib/leftovers.ts   which later meals can be marked as leftovers (tested)
 src/lib/epc.ts         SEPA QR payload + IBAN validation (tested)
 src/lib/session.ts     signed cookie (Web Crypto; used by middleware + server)
+src/lib/push.ts        web push sending (never throws; skipped without VAPID keys)
+public/sw.js           service worker: shows notifications and opens the meal when tapped
 src/app/actions.ts     all writes (server actions); each one logs to the activity feed
 src/app/eat/[id]/      QR target: logs "I ate here" for the scanning phone, then shows the meal
 src/app/(app)/         Meals, meal detail, Plan, History, Money, Feed, Me pages
-src/db/schema.ts       members, meals (+ leftovers_of_id), signups, expenses, payments, ratings, activity
+src/db/schema.ts       members (+ usually_in), meals (+ leftovers_of_id), signups, expenses, payments, ratings, push_subscriptions, activity
 ```

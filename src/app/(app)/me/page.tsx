@@ -3,6 +3,8 @@ import { switchPerson } from "@/app/actions";
 import { ProfileForm } from "@/components/forms";
 import { Avatar } from "@/components/Avatar";
 import { SubmitButton } from "@/components/ui";
+import { NotificationSettings } from "@/components/Notifications";
+import { pushPublicKey } from "@/lib/push";
 
 export default async function MePage({ searchParams }: { searchParams: Promise<{ welcome?: string }> }) {
   const me = await requireMember();
@@ -22,6 +24,7 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
         </p>
       )}
       <ProfileForm me={me} />
+      <NotificationSettings publicKey={pushPublicKey()} />
       <details className="card p-4" open={!!welcome}>
         <summary className="cursor-pointer font-semibold">How Tavola works</summary>
         <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm">
@@ -29,7 +32,9 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
             <b>Plan.</b> Anyone ticks the lunches and dinners coming up on the Plan tab.
           </li>
           <li>
-            <b>Sign up.</b> Tap &quot;I&apos;m in&quot; before the deadline so the cook knows how many to cook for.
+            <b>Sign up.</b> Tap &quot;I&apos;m in&quot; before the deadline so the cook knows how many to cook for. Eat
+            with us most days? Tick &quot;I&apos;m usually in&quot; above and you&apos;re signed up automatically. Turn
+            on notifications to hear when a meal is planned.
           </li>
           <li>
             <b>Groceries.</b> Whoever buys the food adds the receipt total on the meal. It&apos;s split equally between

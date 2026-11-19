@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, gte, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import type { Member, Meal, ActivityPayload } from "@/db/schema";
@@ -13,6 +13,8 @@ import { isValidIban, normalizeIban } from "@/lib/epc";
 import { canRate, MAX_SCORE, MIN_SCORE } from "@/lib/zorkasm";
 import { isLeftoverSlot, LEFTOVER_MAX_DAYS } from "@/lib/leftovers";
 import { joinMeal, safeNext } from "@/lib/attendance";
+import { notify } from "@/lib/push";
+import { sortMeals } from "@/lib/data";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -109,6 +111,8 @@ export async function updateProfile(_: FormState, formData: FormData): Promise<F
   if (revolut && !/^[a-zA-Z0-9._-]{2,40}$/.test(revolut)) return { error: "That Revolut handle looks wrong." };
   if (ibanRaw && !isValidIban(ibanRaw)) return { error: "That IBAN doesn't pass the checksum — double-check it." };
   if (ibanRaw && !ibanName) return { error: "Add the account holder name for the IBAN (needed for the bank QR)." };
+  // Unchecked checkboxes send nothing, so a missing value means "off". The cook is never auto-signed up.
+  const usuallyIn = formData.get("usuallyIn") === "1" && kind !== "cook";
   const db = await getDb();
   const nameKey = name.toLowerCase();
   const [clash] = await db.select().from(schema.members).where(eq(schema.members.nameKey, nameKey));
@@ -122,8 +126,29 @@ export async function updateProfile(_: FormState, formData: FormData): Promise<F
       revolutHandle: revolut || null,
       iban: ibanRaw ? normalizeIban(ibanRaw) : null,
       ibanName: ibanName || null,
+      usuallyIn,
     })
     .where(eq(schema.members.id, me.id));
+  // Turning "usually in" on also signs you up for meals already planned that are still open.
+  let backfilled = 0;
+  if (usuallyIn && !me.usuallyIn) {
+    const updated = { ...me, name, kind, usuallyIn };
+    const open = await db
+      .select()
+      .from(schema.meals)
+      .where(
+        and(
+          eq(schema.meals.status, "open"),
+          isNull(schema.meals.leftoversOfId),
+          gte(schema.meals.date, todayRome()),
+          gt(schema.meals.signupDeadline, new Date()),
+        ),
+      );
+    for (const meal of open) if (await joinMeal(updated, updated, meal, "(usually in)")) backfilled++;
+  }
+  if (usuallyIn !== me.usuallyIn) {
+    await log(me.id, "profile_updated", { text: `${name} is ${usuallyIn ? "now" : "no longer"} usually in` });
+  }
   if (kind !== me.kind) {
     await log(me.id, "profile_updated", { text: `${name} is now marked as ${kind}` });
   }
@@ -131,7 +156,45 @@ export async function updateProfile(_: FormState, formData: FormData): Promise<F
     await log(me.id, "profile_updated", { text: `${me.name} renamed to ${name}` });
   }
   refresh();
-  return { ok: "Saved" };
+  return { ok: backfilled ? `Saved, and signed you up for ${backfilled} upcoming ${backfilled === 1 ? "meal" : "meals"}` : "Saved" };
+}
+
+// ---------- notifications ----------
+
+const subscriptionInput = z.object({
+  endpoint: z.string().url().max(2000),
+  keys: z.object({ p256dh: z.string().min(1).max(500), auth: z.string().min(1).max(500) }),
+});
+
+/** Remembers this phone for notifications, linked to whoever is using it now. */
+export async function saveSubscription(input: unknown) {
+  const me = await requireMember();
+  const sub = subscriptionInput.parse(input);
+  const db = await getDb();
+  await db
+    .insert(schema.pushSubscriptions)
+    .values({ memberId: me.id, endpoint: sub.endpoint, p256dh: sub.keys.p256dh, auth: sub.keys.auth })
+    .onConflictDoUpdate({
+      target: schema.pushSubscriptions.endpoint,
+      set: { memberId: me.id, p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+    });
+}
+
+export async function removeSubscription(endpoint: string) {
+  await requireMember();
+  const db = await getDb();
+  await db.delete(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.endpoint, String(endpoint)));
+}
+
+/** Sends a test to your own phones only. Returns how many accepted it. */
+export async function sendTestNotification(): Promise<number> {
+  const me = await requireMember();
+  return notify([me.id], () => ({
+    title: "🍝 Tavola notifications work",
+    body: "You'll get one like this whenever someone plans a meal.",
+    url: "/me",
+    tag: "test",
+  }));
 }
 
 // ---------- meals ----------
@@ -146,7 +209,7 @@ export async function createMeals(_: FormState, formData: FormData): Promise<For
   if (picks.length === 0) return { error: "Tick at least one lunch or dinner." };
   const today = todayRome();
   const db = await getDb();
-  let created = 0;
+  const createdMeals: Meal[] = [];
   for (const pick of picks) {
     const [date, slot] = pick.split(":");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (slot !== "lunch" && slot !== "dinner") || date < today) continue;
@@ -171,12 +234,39 @@ export async function createMeals(_: FormState, formData: FormData): Promise<For
         .values({ date, slot, signupDeadline: deadline, notes, createdBy: me.id })
         .returning();
     }
-    created++;
+    createdMeals.push(meal);
     await log(me.id, "meal_created", { text: `${me.name} scheduled ${mealLabel(meal)}`, mealId: meal.id });
   }
+  if (createdMeals.length === 0) return { error: "Those meals already exist." };
+  // People who are usually in get signed up straight away; they tap "Can't make it" to opt out.
+  const regulars = (await db.select().from(schema.members).where(eq(schema.members.usuallyIn, true))).filter(
+    (m) => m.kind !== "cook",
+  );
+  for (const meal of createdMeals) {
+    for (const r of regulars) await joinMeal(r, r, meal, "(usually in)");
+  }
+  await notifyPlanned(me, sortMeals(createdMeals), new Set(regulars.map((r) => r.id)));
   refresh();
-  if (created === 0) return { error: "Those meals already exist." };
   redirect("/");
+}
+
+/** One notification per planning batch, to everyone except whoever planned it. */
+async function notifyPlanned(me: Member, meals: Meal[], regularIds: Set<number>) {
+  const db = await getDb();
+  const others = (await db.select({ id: schema.members.id }).from(schema.members)).map((m) => m.id).filter((id) => id !== me.id);
+  const what =
+    meals.length === 1
+      ? `${mealLabel(meals[0])}${meals[0].notes ? ` (${meals[0].notes})` : ""}`
+      : `${meals.length} meals, ${formatDay(meals[0].date)} – ${formatDay(meals[meals.length - 1].date)}`;
+  const url = meals.length === 1 ? `/meals/${meals[0].id}` : "/";
+  await notify(others, (id) => ({
+    title: meals.length === 1 ? "🍝 New meal planned" : `🍝 ${meals.length} meals planned`,
+    body: regularIds.has(id)
+      ? `${me.name} planned ${what}. You're in automatically, tap if you can't make it.`
+      : `${me.name} planned ${what}. Tap to join.`,
+    url,
+    tag: "planned",
+  }));
 }
 
 export async function updateMeal(_: FormState, formData: FormData): Promise<FormState> {

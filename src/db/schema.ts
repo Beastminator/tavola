@@ -1,5 +1,5 @@
 import {
-  pgTable, serial, text, integer, timestamp, date, jsonb, uniqueIndex, index, type AnyPgColumn,
+  pgTable, serial, text, integer, timestamp, date, jsonb, boolean, uniqueIndex, index, type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 export const members = pgTable(
@@ -12,6 +12,8 @@ export const members = pgTable(
     revolutHandle: text("revolut_handle"),
     iban: text("iban"),
     ibanName: text("iban_name"),
+    /** Signed up automatically for every newly planned meal; they tap "Can't make it" to opt out. */
+    usuallyIn: boolean("usually_in").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("members_name_key_idx").on(t.nameKey)],
@@ -84,6 +86,20 @@ export const ratings = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("ratings_meal_member_idx").on(t.mealId, t.memberId)],
+);
+
+/** Web Push subscriptions: one row per phone/browser that turned notifications on. */
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: serial("id").primaryKey(),
+    memberId: integer("member_id").notNull().references(() => members.id),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("push_subscriptions_endpoint_idx").on(t.endpoint)],
 );
 
 export type ActivityPayload = {
