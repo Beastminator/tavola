@@ -158,10 +158,10 @@ export function computeBalances(input: LedgerInput): Map<number, number> {
   return bal;
 }
 
-/** Greedy transfers: largest debtor pays largest creditor until everyone is at zero. */
-export function settleUp(balances: Map<number, number>): Debt[] {
-  const debtors = [...balances].filter(([, v]) => v < 0).map(([id, v]) => ({ id, v: -v }));
-  const creditors = [...balances].filter(([, v]) => v > 0).map(([id, v]) => ({ id, v }));
+/** Greedy transfers: largest debtor pays largest creditor until everyone is at zero (at most n-1 transfers). */
+function greedySettle(entries: [number, number][]): Debt[] {
+  const debtors = entries.filter(([, v]) => v < 0).map(([id, v]) => ({ id, v: -v }));
+  const creditors = entries.filter(([, v]) => v > 0).map(([id, v]) => ({ id, v }));
   const out: Debt[] = [];
   const byDesc = (a: { v: number; id: number }, b: { v: number; id: number }) => b.v - a.v || a.id - b.id;
   while (debtors.length && creditors.length) {
@@ -175,6 +175,51 @@ export function settleUp(balances: Map<number, number>): Debt[] {
     c.v -= amt;
     if (d.v === 0) debtors.shift();
     if (c.v === 0) creditors.shift();
+  }
+  return out;
+}
+
+/** Above this many non-zero balances the exact search gets slow; fall back to greedy. */
+const EXACT_LIMIT = 15;
+
+/**
+ * Fewest transfers that bring everyone to zero. The minimum is n − k, where k is the largest number of
+ * disjoint groups whose balances each sum to zero; each group then settles in (size − 1) transfers.
+ * Found exactly with a subset search for small groups (always the case for a friend group).
+ */
+export function settleUp(balances: Map<number, number>): Debt[] {
+  const entries = [...balances].filter(([, v]) => v !== 0).sort((a, b) => a[0] - b[0]);
+  const n = entries.length;
+  if (n < 2 || n > EXACT_LIMIT) return greedySettle(entries);
+  const full = (1 << n) - 1;
+  const sum = new Int32Array(full + 1);
+  const best = new Int8Array(full + 1); // max zero-sum groups that an ordering of `mask` can be cut into
+  for (let m = 1; m <= full; m++) {
+    const low = 31 - Math.clz32(m & -m);
+    sum[m] = sum[m & (m - 1)] + entries[low][1];
+    let b = 0;
+    for (let i = 0; i < n; i++) if (m & (1 << i) && best[m ^ (1 << i)] > b) b = best[m ^ (1 << i)];
+    best[m] = b + (sum[m] === 0 ? 1 : 0);
+  }
+  // Rebuild an ordering backwards, then cut it wherever the running total hits zero.
+  const order: number[] = [];
+  for (let m = full; m; ) {
+    const need = best[m] - (sum[m] === 0 ? 1 : 0);
+    let pick = -1;
+    for (let i = 0; i < n && pick < 0; i++) if (m & (1 << i) && best[m ^ (1 << i)] === need) pick = i;
+    order.unshift(pick);
+    m ^= 1 << pick;
+  }
+  const out: Debt[] = [];
+  let group: [number, number][] = [];
+  let running = 0;
+  for (const i of order) {
+    group.push(entries[i]);
+    running += entries[i][1];
+    if (running === 0) {
+      out.push(...greedySettle(group));
+      group = [];
+    }
   }
   return out;
 }
