@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import type { Member, Meal, ActivityPayload } from "@/db/schema";
@@ -268,6 +268,31 @@ export async function unlinkLeftovers(formData: FormData) {
     mealId: meal.id,
   });
   refresh();
+}
+
+/**
+ * Permanently deletes a meal with its sign-ups, receipts and ratings. Payments tagged to it are kept
+ * (that money really moved) but untagged, and meals marked as its leftovers become normal meals.
+ */
+export async function deleteMeal(formData: FormData) {
+  const me = await requireMember();
+  const meal = await mealOrThrow(intId.parse(formData.get("mealId")));
+  if (formData.get("confirm") !== "1") throw new Error("Not confirmed");
+  const db = await getDb();
+  await db.update(schema.meals).set({ leftoversOfId: null }).where(eq(schema.meals.leftoversOfId, meal.id));
+  await db.update(schema.payments).set({ mealId: null }).where(eq(schema.payments.mealId, meal.id));
+  await db.delete(schema.signups).where(eq(schema.signups.mealId, meal.id));
+  await db.delete(schema.expenses).where(eq(schema.expenses.mealId, meal.id));
+  await db.delete(schema.ratings).where(eq(schema.ratings.mealId, meal.id));
+  // Old feed lines stay, but no longer link to a page that's gone.
+  await db
+    .update(schema.activity)
+    .set({ payload: sql`${schema.activity.payload} - 'mealId'` })
+    .where(sql`(${schema.activity.payload}->>'mealId')::int = ${meal.id}`);
+  await db.delete(schema.meals).where(eq(schema.meals.id, meal.id));
+  await log(me.id, "meal_deleted", { text: `${me.name} deleted ${mealLabel(meal)}${meal.notes ? ` (${meal.notes})` : ""}` });
+  refresh();
+  redirect("/");
 }
 
 /** Join/leave a meal. Defaults to yourself; `memberId` lets anyone fix someone else's attendance. */

@@ -12,6 +12,7 @@ import { formatEuro } from "@/lib/money";
 import { formatDay, formatRome, relativeDay, todayRome } from "@/lib/time";
 import { canRate, summarizeRatings } from "@/lib/zorkasm";
 import {
+  deleteMeal,
   linkLeftovers,
   removeRating,
   setAttendance,
@@ -460,6 +461,25 @@ export default async function MealPage({
               {cancelled ? "Re-open meal" : "Cancel meal"}
             </SubmitButton>
           </form>
+          <details className="rounded-xl border border-bad-soft p-3">
+            <summary className="cursor-pointer text-sm font-semibold text-bad">Delete meal…</summary>
+            <div className="mt-2 space-y-2 text-sm">
+              <p>
+                This permanently removes the meal
+                {expenses.some((e) => !e.voidedAt) || ratings.length > 0 || attendees.length > 0
+                  ? ", including its sign-ups, receipts and ratings. Balances will change to match."
+                  : "."}{" "}
+                Payments already made stay on record. To keep the history, cancel it instead.
+              </p>
+              <form action={deleteMeal}>
+                <input type="hidden" name="mealId" value={meal.id} />
+                <input type="hidden" name="confirm" value="1" />
+                <SubmitButton className="btn w-full bg-bad text-white" pendingText="Deleting…">
+                  Yes, delete {title}
+                </SubmitButton>
+              </form>
+            </div>
+          </details>
         </div>
       </details>
     </div>
