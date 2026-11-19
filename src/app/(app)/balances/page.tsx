@@ -25,9 +25,14 @@ export default async function BalancesPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="font-display text-3xl font-bold">Money</h1>
-        <p className="text-sm text-muted">Everyone&apos;s running balance across all meals. Visible to the whole group.</p>
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-3xl font-bold">Money</h1>
+          <p className="text-sm text-muted">Everyone&apos;s running balance across all meals. Visible to the whole group.</p>
+        </div>
+        <Link href="/activity" className="btn-ghost shrink-0 px-3 py-1.5 text-xs">
+          📜 Feed
+        </Link>
       </header>
 
       <section className="card divide-y divide-line">

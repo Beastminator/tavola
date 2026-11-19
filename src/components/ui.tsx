@@ -45,18 +45,23 @@ const TABS = [
   { href: "/schedule", label: "Plan", icon: "🗓️" },
   { href: "/history", label: "History", icon: "🏆" },
   { href: "/balances", label: "Money", icon: "💶" },
-  { href: "/activity", label: "Feed", icon: "📜" },
   { href: "/me", label: "Me", icon: "🙂" },
 ];
 
 export function BottomNav({ hideMoney }: { hideMoney?: boolean }) {
   const path = usePathname();
-  const tabs = hideMoney ? TABS.filter((t) => t.href !== "/balances") : TABS;
+  // The cook has no money tab, so give them the feed there instead.
+  const tabs = hideMoney
+    ? TABS.map((t) => (t.href === "/balances" ? { href: "/activity", label: "Feed", icon: "📜" } : t))
+    : TABS;
   return (
     <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
       <ul className="mx-auto flex max-w-md">
         {tabs.map((t) => {
-          const active = t.href === "/" ? path === "/" || path.startsWith("/meals") : path.startsWith(t.href);
+          const active =
+            t.href === "/"
+              ? path === "/" || path.startsWith("/meals")
+              : path.startsWith(t.href) || (t.href === "/balances" && path.startsWith("/activity"));
           return (
             <li key={t.href} className="flex-1">
               <Link

@@ -34,7 +34,7 @@ export async function loadGroup(): Promise<GroupData> {
     expenses,
     payments,
     ratings,
-    ledger: { members, signups, expenses, payments },
+    ledger: { members, signups, expenses, payments, meals },
   };
 }
 

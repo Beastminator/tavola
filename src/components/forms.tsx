@@ -19,10 +19,11 @@ function Message({ state }: { state: FormState }) {
   return null;
 }
 
-export function NewMemberForm() {
+export function NewMemberForm({ next = "" }: { next?: string }) {
   const [state, action] = useActionState(createMember, undefined);
   return (
     <form action={action} className="space-y-3">
+      <input type="hidden" name="next" value={next} />
       <div>
         <label className="label" htmlFor="name">
           Your name
@@ -125,8 +126,34 @@ export function ScheduleForm({
 }) {
   const [state, action] = useActionState(createMeals, undefined);
   const taken = new Set(existing);
+  const formRef = useRef<HTMLFormElement>(null);
+  /** Tick every free box matching `pick` (a "date:slot" string) and untick the rest. */
+  const select = (pick: (date: string, slot: string) => boolean) => {
+    formRef.current?.querySelectorAll<HTMLInputElement>('input[name="pick"]:not(:disabled)').forEach((box) => {
+      const [date, slot] = box.value.split(":");
+      box.checked = pick(date, slot);
+    });
+  };
+  const weekday = (date: string) => {
+    const d = new Date(`${date}T12:00:00Z`).getUTCDay();
+    return d !== 0 && d !== 6;
+  };
+  const thisWeek = new Set(days.slice(0, 7).map((d) => d.date));
+  const quick: [string, (date: string, slot: string) => boolean][] = [
+    ["Weekday lunches", (date, slot) => slot === "lunch" && weekday(date) && thisWeek.has(date)],
+    ["Weekday dinners", (date, slot) => slot === "dinner" && weekday(date) && thisWeek.has(date)],
+    ["Every meal this week", (date) => thisWeek.has(date)],
+    ["Clear", () => false],
+  ];
   return (
-    <form action={action} className="space-y-4">
+    <form ref={formRef} action={action} className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        {quick.map(([label, fn]) => (
+          <button key={label} type="button" className="btn-ghost px-3 py-1.5 text-xs" onClick={() => select(fn)}>
+            {label}
+          </button>
+        ))}
+      </div>
       <div className="card divide-y divide-line">
         <div className="grid grid-cols-[1fr_5rem_5rem] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted">
           <span>Day</span>
