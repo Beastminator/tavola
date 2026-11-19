@@ -61,7 +61,7 @@ export function BottomNav({ hideMoney }: { hideMoney?: boolean }) {
           const active =
             t.href === "/"
               ? path === "/" || path.startsWith("/meals")
-              : path.startsWith(t.href) || (t.href === "/balances" && path.startsWith("/activity"));
+              : path.startsWith(t.href) || (t.href === "/balances" && (path.startsWith("/activity") || path.startsWith("/people")));
           return (
             <li key={t.href} className="flex-1">
               <Link

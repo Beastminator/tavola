@@ -37,7 +37,7 @@ export default async function BalancesPage() {
 
       <section className="card divide-y divide-line">
         {rows.map(({ m, v }) => (
-          <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
+          <Link key={m.id} href={`/people/${m.id}`} className="flex items-center gap-3 px-4 py-2.5">
             <Avatar name={m.name} size={28} />
             <span className="w-24 truncate text-sm font-medium">
               {m.name}
@@ -54,12 +54,13 @@ export default async function BalancesPage() {
             >
               {v === 0 ? "settled" : `${v > 0 ? "+" : "−"}${formatEuro(Math.abs(v))}`}
             </span>
-          </div>
+          </Link>
         ))}
         {rows.length === 0 && <p className="p-4 text-sm text-muted">No one here yet.</p>}
       </section>
       <p className="-mt-4 text-xs text-muted">
-        <span className="text-ok">+</span> = is owed money · <span className="text-accent">−</span> = owes money
+        <span className="text-ok">+</span> = is owed money · <span className="text-accent">−</span> = owes money · tap a
+        name for their Revolut / IBAN
       </p>
 
       <section className="space-y-3">

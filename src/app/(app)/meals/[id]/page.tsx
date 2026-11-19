@@ -204,7 +204,7 @@ export default async function MealPage({
             <li key={a.id} className="flex items-center gap-3 py-1">
               <Avatar name={a.name} size={30} />
               <span className="flex-1">
-                {a.name}
+                <Link href={`/people/${a.id}`}>{a.name}</Link>
                 {a.id === me.id && <span className="text-muted"> (me)</span>}
                 {a.kind === "guest" && <span className="chip ml-2 bg-line text-muted">guest</span>}
                 {a.kind === "cook" && <span className="chip ml-2 bg-ok-soft text-ok">cook · free</span>}

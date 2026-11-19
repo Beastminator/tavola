@@ -14,7 +14,8 @@ A small mobile-first web app for a friend group that eats lunches and dinners to
   - copy-IBAN as a fallback
 
   Tapping **I paid** records it right away. Payments are trust-based.
-- **Money tab.** Everyone's public running balance, plus the fewest transfers needed to settle everything at once.
+- **Money tab.** Everyone's public running balance, plus the fewest transfers needed to settle everything at once. This is the true minimum: the group is split into the most possible sets whose balances cancel out, and each set is settled separately. Exact for up to 15 people with a non-zero balance; above that it falls back to a fast near-optimal method.
+- **People.** Tap anyone's name (Money tab or a meal) to see their Revolut and IBAN at any time, their balance, and a pay card if you owe them.
 - **Feed.** Every change is logged, and payments and receipts can be undone from there. It's reached from the Money tab (the cook, who has no Money tab, gets it in the nav instead).
 - **To do.** The home page reminds you about meals from the past week that still need a receipt, or that you ate but haven't rated.
 - **Zorkasm ratings.** Once a meal has happened, everyone who isn't the cook can give it a 1–10 score and a review. The History tab shows every past meal, the averages and a hall of fame.

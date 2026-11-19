@@ -151,6 +151,57 @@ describe("computeBalances + settleUp", () => {
   });
 });
 
+describe("settleUp finds the fewest transfers", () => {
+  const apply = (b: Map<number, number>) => {
+    const after = new Map(b);
+    for (const t of settleUp(b)) {
+      expect(t.amountCents).toBeGreaterThan(0);
+      after.set(t.fromId, after.get(t.fromId)! + t.amountCents);
+      after.set(t.toId, after.get(t.toId)! - t.amountCents);
+    }
+    return [...after.values()].every((v) => v === 0);
+  };
+  // Brute force: n − (max number of disjoint zero-sum groups).
+  const minimum = (vals: number[]): number => {
+    let best = 0;
+    const go = (left: number[], groups: number) => {
+      if (left.length === 0) return void (best = Math.max(best, groups));
+      const [first, ...rest] = left;
+      for (let mask = 0; mask < 1 << rest.length; mask++) {
+        const pick = rest.filter((_, i) => mask & (1 << i));
+        if (first + pick.reduce((a, b) => a + b, 0) === 0) go(rest.filter((_, i) => !(mask & (1 << i))), groups + 1);
+      }
+    };
+    go(vals, 0);
+    return vals.length - best;
+  };
+
+  it("beats the greedy shortcut on a known case", () => {
+    const b = new Map([[1, -400], [2, 300], [3, 200], [4, -600], [5, 200], [6, 300]]);
+    expect(settleUp(b)).toHaveLength(4);
+    expect(apply(b)).toBe(true);
+  });
+
+  it("always zeroes everyone with the minimum number of transfers", () => {
+    let seed = 7;
+    const rand = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    for (let t = 0; t < 300; t++) {
+      const n = 2 + Math.floor(rand() * 7);
+      const vals = Array.from({ length: n - 1 }, () => (Math.floor(rand() * 9) - 4) * 100);
+      vals.push(-vals.reduce((a, b) => a + b, 0));
+      const b = new Map(vals.map((v, i) => [i + 1, v]));
+      expect(apply(b)).toBe(true);
+      expect(settleUp(b)).toHaveLength(minimum(vals.filter((v) => v !== 0)));
+    }
+  });
+
+  it("is deterministic and handles nobody owing anything", () => {
+    const b = new Map([[3, 500], [1, -200], [2, -300]]);
+    expect(settleUp(b)).toEqual(settleUp(new Map([...b].reverse())));
+    expect(settleUp(new Map([[1, 0], [2, 0]]))).toEqual([]);
+  });
+});
+
 describe("leftovers", () => {
   // Meal 20 = Mon dinner (source), 21 = Tue lunch (leftovers of 20), 22 = cancelled leftovers of 20.
   const meals: LMeal[] = [
