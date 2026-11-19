@@ -2,6 +2,14 @@
 // Convention: positive balance = the group owes you; negative = you owe.
 
 export type LMember = { id: number; kind: "member" | "guest" | "cook" };
+/** Only needed for leftovers: a meal with `leftoversOfId` shares the source meal's groceries. */
+export type LMeal = {
+  id: number;
+  date: string;
+  slot: "lunch" | "dinner";
+  status: "open" | "cancelled";
+  leftoversOfId: number | null;
+};
 export type LSignup = { id: number; mealId: number; memberId: number; createdAt: Date };
 export type LExpense = { id: number; mealId: number; payerId: number; amountCents: number; voidedAt: Date | null };
 export type LPayment = {
@@ -13,7 +21,13 @@ export type LPayment = {
   voidedAt: Date | null;
 };
 export type Debt = { fromId: number; toId: number; amountCents: number };
-export type LedgerInput = { members: LMember[]; signups: LSignup[]; expenses: LExpense[]; payments: LPayment[] };
+export type LedgerInput = {
+  members: LMember[];
+  signups: LSignup[];
+  expenses: LExpense[];
+  payments: LPayment[];
+  meals?: LMeal[];
+};
 
 /** Splits `total` cents into `n` integer parts summing exactly to total; the first `total % n` parts get +1. */
 export function splitAmount(total: number, n: number): number[] {
@@ -23,41 +37,78 @@ export function splitAmount(total: number, n: number): number[] {
   return Array.from({ length: n }, (_, i) => base + (i < rem ? 1 : 0));
 }
 
-/** Paying attendees of a meal (cook excluded), in deterministic order: signup time, then signup id. */
-export function payingAttendees(mealId: number, signups: LSignup[], members: Map<number, LMember>): number[] {
-  return signups
-    .filter((s) => s.mealId === mealId && members.get(s.memberId)?.kind !== "cook")
-    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id - b.id)
+const SLOT_ORDER = { lunch: 0, dinner: 1 } as const;
+
+/**
+ * Meals whose eaters share the groceries bought for `mealId`: the meal itself plus any
+ * (non-cancelled) meals marked as its leftovers. Leftover meals never have leftovers of their own.
+ */
+export function costGroup(mealId: number, meals: LMeal[] = []): LMeal["id"][] {
+  return [mealId, ...meals.filter((m) => m.leftoversOfId === mealId && m.status !== "cancelled").map((m) => m.id)];
+}
+
+/**
+ * Paying portions for groceries bought for `mealId`: one entry per (non-cook) signup across the meal and
+ * its leftovers, so someone who eats twice appears twice. Deterministic order: meal date/slot, then
+ * signup time, then signup id (this decides who gets the remainder cents).
+ */
+export function mealPortions(mealId: number, input: LedgerInput, members?: Map<number, LMember>): number[] {
+  const memberMap = members ?? new Map(input.members.map((m) => [m.id, m]));
+  const mealMap = new Map((input.meals ?? []).map((m) => [m.id, m]));
+  const group = costGroup(mealId, input.meals);
+  const mealKey = (id: number) => {
+    const m = mealMap.get(id);
+    return m ? `${m.date}:${SLOT_ORDER[m.slot]}` : "";
+  };
+  return input.signups
+    .filter((s) => group.includes(s.mealId) && memberMap.get(s.memberId)?.kind !== "cook")
+    .sort(
+      (a, b) =>
+        mealKey(a.mealId).localeCompare(mealKey(b.mealId)) ||
+        a.createdAt.getTime() - b.createdAt.getTime() ||
+        a.id - b.id,
+    )
     .map((s) => s.memberId);
 }
 
-/** Shares of one expense: who owes how much to the payer (payer's own share included as from === to). */
-export function expenseShares(expense: LExpense, attendees: number[]): Debt[] {
-  const parts = splitAmount(expense.amountCents, attendees.length);
-  return attendees.map((id, i) => ({ fromId: id, toId: expense.payerId, amountCents: parts[i] }));
+/**
+ * Shares of one expense: who owes how much to the payer (payer's own share included as from === to).
+ * `portions` may repeat a member (they ate more than once); their parts are summed.
+ */
+export function expenseShares(expense: LExpense, portions: number[]): Debt[] {
+  const parts = splitAmount(expense.amountCents, portions.length);
+  const byMember = new Map<number, number>();
+  portions.forEach((id, i) => byMember.set(id, (byMember.get(id) ?? 0) + parts[i]));
+  return [...byMember].map(([id, amountCents]) => ({ fromId: id, toId: expense.payerId, amountCents }));
 }
 
 export type MealDebt = Debt & { paidCents: number };
 export type MealSummary = {
   totalCents: number;
+  /** Distinct paying people across the meal and its leftovers, in portion order. */
   attendees: number[];
+  /** Number of paying portions the groceries are split over (≥ attendees.length with leftovers). */
+  portionCount: number;
+  /** Portions per person, only > 1 for people who ate the leftovers too. */
+  portionsByMember: Map<number, number>;
   /** Non-self debts aggregated per (from, to) pair for this meal, with meal-tagged payments applied. */
   debts: MealDebt[];
   /** Total share per attendee (incl. what they owe themselves as a buyer). */
   shareByMember: Map<number, number>;
-  /** true when there are active expenses but nobody (non-cook) attended: costs can't be split yet. */
+  /** true when there are active expenses but nobody (non-cook) ate: costs can't be split yet. */
   unsplittable: boolean;
 };
 
 export function summarizeMeal(mealId: number, input: LedgerInput): MealSummary {
-  const memberMap = new Map(input.members.map((m) => [m.id, m]));
-  const attendees = payingAttendees(mealId, input.signups, memberMap);
+  const portions = mealPortions(mealId, input);
+  const portionsByMember = new Map<number, number>();
+  for (const id of portions) portionsByMember.set(id, (portionsByMember.get(id) ?? 0) + 1);
   const active = input.expenses.filter((e) => e.mealId === mealId && !e.voidedAt);
   const totalCents = active.reduce((s, e) => s + e.amountCents, 0);
   const pair = new Map<string, MealDebt>();
   const shareByMember = new Map<number, number>();
   for (const e of active) {
-    for (const d of expenseShares(e, attendees)) {
+    for (const d of expenseShares(e, portions)) {
       shareByMember.set(d.fromId, (shareByMember.get(d.fromId) ?? 0) + d.amountCents);
       if (d.fromId === d.toId) continue;
       const k = `${d.fromId}:${d.toId}`;
@@ -73,10 +124,12 @@ export function summarizeMeal(mealId: number, input: LedgerInput): MealSummary {
   }
   return {
     totalCents,
-    attendees,
+    attendees: [...portionsByMember.keys()],
+    portionCount: portions.length,
+    portionsByMember,
     debts: [...pair.values()],
     shareByMember,
-    unsplittable: active.length > 0 && attendees.length === 0,
+    unsplittable: active.length > 0 && portions.length === 0,
   };
 }
 
@@ -85,13 +138,13 @@ export function computeBalances(input: LedgerInput): Map<number, number> {
   const memberMap = new Map(input.members.map((m) => [m.id, m]));
   const bal = new Map<number, number>(input.members.map((m) => [m.id, 0]));
   const add = (id: number, v: number) => bal.set(id, (bal.get(id) ?? 0) + v);
-  const attendeesByMeal = new Map<number, number[]>();
+  const portionsByMeal = new Map<number, number[]>();
   for (const e of input.expenses) {
     if (e.voidedAt) continue;
-    let att = attendeesByMeal.get(e.mealId);
+    let att = portionsByMeal.get(e.mealId);
     if (!att) {
-      att = payingAttendees(e.mealId, input.signups, memberMap);
-      attendeesByMeal.set(e.mealId, att);
+      att = mealPortions(e.mealId, input, memberMap);
+      portionsByMeal.set(e.mealId, att);
     }
     if (att.length === 0) continue; // unsplittable: no effect until someone is added
     add(e.payerId, e.amountCents);

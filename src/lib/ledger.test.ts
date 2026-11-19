@@ -8,6 +8,7 @@ import {
   type LSignup,
   type LExpense,
   type LPayment,
+  type LMeal,
 } from "./ledger";
 import { parseEuro, formatEuro } from "./money";
 
@@ -147,6 +148,73 @@ describe("computeBalances + settleUp", () => {
     }
     expect([...after.values()].every((v) => v === 0)).toBe(true);
     expect(transfers.length).toBeLessThanOrEqual([...b.values()].filter((v) => v !== 0).length - 1);
+  });
+});
+
+describe("leftovers", () => {
+  // Meal 20 = Mon dinner (source), 21 = Tue lunch (leftovers of 20), 22 = cancelled leftovers of 20.
+  const meals: LMeal[] = [
+    { id: 20, date: "2026-01-05", slot: "dinner", status: "open", leftoversOfId: null },
+    { id: 21, date: "2026-01-06", slot: "lunch", status: "open", leftoversOfId: 20 },
+    { id: 22, date: "2026-01-07", slot: "lunch", status: "cancelled", leftoversOfId: 20 },
+  ];
+  // Source: 1, 2, cook. Leftovers: 2 (again), 3, cook. Cancelled leftovers: 5.
+  const signups = [su(1, 20, 1), su(2, 20, 2), su(3, 20, 4), su(4, 21, 2), su(5, 21, 3), su(6, 21, 4), su(7, 22, 5)];
+  const input = (expenses: LExpense[], payments: LPayment[] = []) => ({ members, signups, meals, expenses, payments });
+
+  it("splits the source meal's groceries per portion across both meals", () => {
+    const s = summarizeMeal(20, input([exp(1, 20, 1, 4000)]));
+    expect(s.portionCount).toBe(4); // 1, 2, 2, 3 — cook and cancelled meal excluded
+    expect(s.attendees).toEqual([1, 2, 3]);
+    expect(s.portionsByMember.get(2)).toBe(2);
+    expect(s.shareByMember.get(1)).toBe(1000);
+    expect(s.shareByMember.get(2)).toBe(2000); // ate twice, pays twice
+    expect(s.shareByMember.get(3)).toBe(1000);
+    expect(s.shareByMember.get(4)).toBeUndefined();
+    expect(s.shareByMember.get(5)).toBeUndefined();
+    expect(sum([...s.shareByMember.values()])).toBe(4000);
+  });
+
+  it("shares always add up exactly, remainder to the earliest portions", () => {
+    const s = summarizeMeal(20, input([exp(1, 20, 1, 1001)]));
+    expect(sum([...s.shareByMember.values()])).toBe(1001);
+    expect(s.shareByMember.get(1)).toBe(251); // first portion gets the extra cent
+  });
+
+  it("extra groceries bought for the leftover meal only hit its own eaters", () => {
+    const s = summarizeMeal(21, input([exp(1, 21, 3, 300)]));
+    expect(s.attendees).toEqual([2, 3]);
+    expect(s.shareByMember.get(2)).toBe(150);
+    expect(s.shareByMember.get(1)).toBeUndefined();
+  });
+
+  it("is splittable when only the leftover meal has eaters", () => {
+    const s = summarizeMeal(20, {
+      members,
+      meals,
+      signups: [su(1, 21, 3)],
+      expenses: [exp(1, 20, 1, 1000)],
+      payments: [],
+    });
+    expect(s.unsplittable).toBe(false);
+    expect(s.shareByMember.get(3)).toBe(1000);
+  });
+
+  it("balances match per-meal debts and sum to zero", () => {
+    const expenses = [exp(1, 20, 1, 4001), exp(2, 21, 3, 300)];
+    const b = computeBalances(input(expenses));
+    expect(sum([...b.values()])).toBe(0);
+    const s20 = summarizeMeal(20, input(expenses));
+    const s21 = summarizeMeal(21, input(expenses));
+    for (const m of members) {
+      let fromDebts = 0;
+      for (const d of [...s20.debts, ...s21.debts]) {
+        if (d.toId === m.id) fromDebts += d.amountCents;
+        if (d.fromId === m.id) fromDebts -= d.amountCents;
+      }
+      expect(b.get(m.id)).toBe(fromDebts);
+    }
+    expect(b.get(4)).toBe(0);
   });
 });
 

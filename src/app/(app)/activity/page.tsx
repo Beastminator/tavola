@@ -20,6 +20,10 @@ const ICON: Record<string, string> = {
   expense_voided: "↩️",
   payment: "💸",
   payment_voided: "↩️",
+  rating: "🔥",
+  rating_removed: "↩️",
+  leftovers_linked: "🍲",
+  leftovers_unlinked: "↩️",
 };
 
 export default async function ActivityPage() {
@@ -35,6 +39,9 @@ export default async function ActivityPage() {
   return (
     <div className="space-y-4">
       <header>
+        <Link href="/balances" className="text-sm text-muted">
+          ‹ Money
+        </Link>
         <h1 className="font-display text-3xl font-bold">Feed</h1>
         <p className="text-sm text-muted">Everything that happened, newest first. Spot a mistake? Undo it.</p>
       </header>

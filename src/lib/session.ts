@@ -9,7 +9,7 @@ export type SessionData = { g: string; m?: number };
 
 const enc = new TextEncoder();
 
-function inviteToken(): string {
+export function inviteToken(): string {
   const t = process.env.GROUP_INVITE_TOKEN;
   if (t) return t;
   if (process.env.NODE_ENV === "production") throw new Error("GROUP_INVITE_TOKEN is not set");

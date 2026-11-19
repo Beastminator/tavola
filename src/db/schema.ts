@@ -1,5 +1,5 @@
 import {
-  pgTable, serial, text, integer, timestamp, date, jsonb, uniqueIndex, index,
+  pgTable, serial, text, integer, timestamp, date, jsonb, uniqueIndex, index, type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 export const members = pgTable(
@@ -26,6 +26,8 @@ export const meals = pgTable(
     signupDeadline: timestamp("signup_deadline", { withTimezone: true }).notNull(),
     status: text("status", { enum: ["open", "cancelled"] }).notNull().default("open"),
     notes: text("notes"),
+    /** Set when this meal is (mostly) leftovers of an earlier one: that meal's groceries get split across both. */
+    leftoversOfId: integer("leftovers_of_id").references((): AnyPgColumn => meals.id),
     createdBy: integer("created_by").references(() => members.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -16,7 +16,8 @@ export default async function SchedulePage() {
     <div className="space-y-4">
       <header>
         <h1 className="font-display text-3xl font-bold">Plan meals</h1>
-        <p className="text-sm text-muted">Tick the lunches and dinners happening. Greyed ones are already planned.</p>
+        <p className="text-sm text-muted">Tick the lunches and dinners happening (or use a shortcut). Greyed ones are already planned. Eating
+          leftovers? Mark them from the original meal&apos;s page instead.</p>
       </header>
       <ScheduleForm days={days} existing={existing} />
     </div>

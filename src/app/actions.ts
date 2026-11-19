@@ -11,6 +11,8 @@ import { parseEuro, formatEuro } from "@/lib/money";
 import { DEFAULT_DEADLINE, formatDay, romeToUtc, todayRome } from "@/lib/time";
 import { isValidIban, normalizeIban } from "@/lib/epc";
 import { canRate, MAX_SCORE, MIN_SCORE } from "@/lib/zorkasm";
+import { isLeftoverSlot, LEFTOVER_MAX_DAYS } from "@/lib/leftovers";
+import { joinMeal, safeNext } from "@/lib/attendance";
 
 export type FormState = { error?: string; ok?: string } | undefined;
 
@@ -49,7 +51,7 @@ export async function pickExisting(formData: FormData) {
   const id = intId.parse(formData.get("memberId"));
   await memberOrThrow(id);
   await setSession(id);
-  redirect("/");
+  redirect(safeNext(String(formData.get("next") ?? "")) ?? "/");
 }
 
 export async function createMember(_: FormState, formData: FormData): Promise<FormState> {
@@ -65,7 +67,7 @@ export async function createMember(_: FormState, formData: FormData): Promise<Fo
   await log(m.id, "member_joined", { text: `${name} joined${kind === "guest" ? " as a guest" : ""}` });
   await setSession(m.id);
   refresh();
-  redirect("/me?welcome=1");
+  redirect(safeNext(String(formData.get("next") ?? "")) ?? "/me?welcome=1");
 }
 
 export async function switchPerson() {
@@ -138,7 +140,7 @@ export async function createMeals(_: FormState, formData: FormData): Promise<For
       if (existing.status !== "cancelled") continue;
       [meal] = await db
         .update(schema.meals)
-        .set({ status: "open", signupDeadline: deadline, notes })
+        .set({ status: "open", signupDeadline: deadline, notes, leftoversOfId: null }) // planned fresh
         .where(eq(schema.meals.id, existing.id))
         .returning();
     } else {
@@ -188,6 +190,64 @@ export async function setMealCancelled(formData: FormData) {
   refresh();
 }
 
+/**
+ * Marks a later lunch/dinner as leftovers of `sourceId`. The source's groceries are then split per
+ * portion across everyone who ate either meal. `target` is "YYYY-MM-DD:lunch|dinner"; the meal is
+ * created if it isn't planned yet.
+ */
+export async function linkLeftovers(formData: FormData) {
+  const me = await requireMember();
+  let source = await mealOrThrow(intId.parse(formData.get("sourceId")));
+  if (source.leftoversOfId) source = await mealOrThrow(source.leftoversOfId); // always link to the original
+  const [date, slot] = String(formData.get("target") ?? "").split(":");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (slot !== "lunch" && slot !== "dinner")) throw new Error("Pick a meal");
+  if (!isLeftoverSlot({ date, slot }, source)) {
+    throw new Error(`Leftovers have to be within ${LEFTOVER_MAX_DAYS} days after the original meal`);
+  }
+  const db = await getDb();
+  const [existing] = await db
+    .select()
+    .from(schema.meals)
+    .where(and(eq(schema.meals.date, date), eq(schema.meals.slot, slot)));
+  let target: Meal;
+  if (existing) {
+    const [child] = await db.select().from(schema.meals).where(eq(schema.meals.leftoversOfId, existing.id)).limit(1);
+    if (child) throw new Error("That meal has leftovers of its own");
+    [target] = await db
+      .update(schema.meals)
+      .set({ leftoversOfId: source.id, status: "open" })
+      .where(eq(schema.meals.id, existing.id))
+      .returning();
+  } else {
+    let deadline = romeToUtc(date, DEFAULT_DEADLINE[slot]);
+    if (deadline.getTime() < Date.now() && date >= todayRome()) deadline = new Date(Date.now() + 60 * 60 * 1000);
+    [target] = await db
+      .insert(schema.meals)
+      .values({ date, slot, signupDeadline: deadline, leftoversOfId: source.id, createdBy: me.id })
+      .returning();
+  }
+  await log(me.id, "leftovers_linked", {
+    text: `${me.name} marked ${mealLabel(target)} as leftovers of ${mealLabel(source)}`,
+    mealId: target.id,
+  });
+  refresh();
+  redirect(`/meals/${target.id}`);
+}
+
+export async function unlinkLeftovers(formData: FormData) {
+  const me = await requireMember();
+  const meal = await mealOrThrow(intId.parse(formData.get("mealId")));
+  if (!meal.leftoversOfId) return;
+  const source = await mealOrThrow(meal.leftoversOfId);
+  const db = await getDb();
+  await db.update(schema.meals).set({ leftoversOfId: null }).where(eq(schema.meals.id, meal.id));
+  await log(me.id, "leftovers_unlinked", {
+    text: `${me.name} unmarked ${mealLabel(meal)} as leftovers of ${mealLabel(source)}`,
+    mealId: meal.id,
+  });
+  refresh();
+}
+
 /** Join/leave a meal. Defaults to yourself; `memberId` lets anyone fix someone else's attendance. */
 export async function setAttendance(formData: FormData) {
   const me = await requireMember();
@@ -199,17 +259,7 @@ export async function setAttendance(formData: FormData) {
   const late = new Date() > meal.signupDeadline;
   const who = target.id === me.id ? me.name : `${me.name} ${join ? "added" : "removed"} ${target.name}`;
   if (join) {
-    const inserted = await db
-      .insert(schema.signups)
-      .values({ mealId: meal.id, memberId: target.id })
-      .onConflictDoNothing()
-      .returning();
-    if (inserted.length) {
-      await log(me.id, "signup", {
-        text: `${target.id === me.id ? `${who} joined` : `${who} to`} ${mealLabel(meal)}${late ? " (late)" : ""}`,
-        mealId: meal.id,
-      });
-    }
+    await joinMeal(me, target, meal);
   } else {
     const removed = await db
       .delete(schema.signups)

@@ -3,9 +3,11 @@
 A small mobile-first web app for a friend group that eats lunches and dinners together. Someone cooks, and the group buys the groceries.
 
 - **Plan meals.** Anyone ticks the lunches and dinners happening over the next 2 weeks. Each meal has a sign-up deadline.
-- **Sign up.** One tap: "I'm in". Late changes are still allowed after the deadline (with a warning).
-- **Cook view.** The cook marks herself as *cook* on the Me page and sees "Cook for N" for each meal. She eats free and is never charged.
+- **Sign up.** The Meals tab opens on the next meal with one big button: "I'm in" before the deadline, "I'm eating" on the day, "I ate this" afterwards. Late changes are always allowed (with a warning). Forgot to log yesterday's meal? The home page asks "Ate dinner Wed?" with a one-tap button.
+- **Scan to log.** Every meal page has a QR code (📷 section) to show at the table. Scanning it with a phone camera logs that person as eating the meal in one go, with an Undo. The QR goes through the invite link, so a phone that isn't in the group yet picks a name first and is then logged. Since it includes the invite, only show it to people at the table.
+- **Cook view.** The cook marks herself as *cook* on the Me page and sees "Cook for N" for each meal (leftover meals don't need cooking, so they don't show it). She eats free and is never charged.
 - **Split costs.** Whoever bought groceries adds the receipt total to the meal. It's split equally among the people who signed up. Remainder cents go to the earliest sign-ups, so shares always add up exactly.
+- **Leftovers.** When one cook-up feeds more than one meal, open the original meal and mark a later lunch or dinner (up to 4 days later) as its leftovers. The later meal is created if it isn't planned yet. The original groceries are then split **per portion** across everyone who ate either meal: one portion per person per meal, so someone who eats both pays for two portions. Anything bought just for the leftover meal (bread, say) can be added there as an extra and is split among that meal's eaters only. Cancelled leftover meals don't count.
 - **Pay.** Each person sees "Pay Alice €8.33", with:
   - a Revolut link
   - a SEPA (EPC/GiroCode) QR that most EU banking apps scan with the amount filled in
@@ -13,7 +15,9 @@ A small mobile-first web app for a friend group that eats lunches and dinners to
 
   Tapping **I paid** records it right away. Payments are trust-based.
 - **Money tab.** Everyone's public running balance, plus the fewest transfers needed to settle everything at once.
-- **Feed.** Every change is logged, and payments and receipts can be undone from there.
+- **Feed.** Every change is logged, and payments and receipts can be undone from there. It's reached from the Money tab (the cook, who has no Money tab, gets it in the nav instead).
+- **To do.** The home page reminds you about meals from the past week that still need a receipt, or that you ate but haven't rated.
+- **Zorkasm ratings.** Once a meal has happened, everyone who isn't the cook can give it a 1–10 score and a review. The History tab shows every past meal, the averages and a hall of fame.
 - **Guests.** They open the same invite link, tick "I'm a guest", and pay their own share.
 
 ## How login works
@@ -37,7 +41,7 @@ Balances are **never stored**. They're derived from expenses and payments in `sr
 ```bash
 npm install
 npm run dev            # http://localhost:3000/join/dev  (dev invite token is "dev")
-npm test               # money math + EPC QR unit tests
+npm test               # money math (incl. leftovers), EPC QR and rating unit tests
 npm run lint && npx tsc --noEmit
 ```
 
@@ -57,10 +61,12 @@ Schema changes: edit `src/db/schema.ts`, then run `npm run db:generate` to creat
 ## Layout
 
 ```
-src/lib/ledger.ts      split / balances / settle-up (pure, tested)
+src/lib/ledger.ts      split / leftovers portions / balances / settle-up (pure, tested)
+src/lib/leftovers.ts   which later meals can be marked as leftovers (tested)
 src/lib/epc.ts         SEPA QR payload + IBAN validation (tested)
 src/lib/session.ts     signed cookie (Web Crypto; used by middleware + server)
 src/app/actions.ts     all writes (server actions); each one logs to the activity feed
-src/app/(app)/         Meals, meal detail, Plan, Money, Feed, Me pages
-src/db/schema.ts       members, meals, signups, expenses, payments, activity
+src/app/eat/[id]/      QR target: logs "I ate here" for the scanning phone, then shows the meal
+src/app/(app)/         Meals, meal detail, Plan, History, Money, Feed, Me pages
+src/db/schema.ts       members, meals (+ leftovers_of_id), signups, expenses, payments, ratings, activity
 ```
