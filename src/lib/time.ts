@@ -5,6 +5,9 @@ export const TZ = "Europe/Rome";
 
 export const DEFAULT_DEADLINE = { lunch: "10:00", dinner: "16:00" } as const;
 
+/** Rome time after which a meal counts as eaten: it leaves "next up" and moves to the after-meal nudges. */
+export const MEAL_OVER = { lunch: "15:00", dinner: "23:00" } as const;
+
 /** Today's date in Rome as YYYY-MM-DD. */
 export function todayRome(now = new Date()): string {
   return formatInTimeZone(now, TZ, "yyyy-MM-dd");
@@ -19,6 +22,11 @@ export function nextDays(n: number, now = new Date()): string[] {
 /** Rome wall-clock date + "HH:mm" -> UTC Date. */
 export function romeToUtc(date: string, time: string): Date {
   return fromZonedTime(`${date}T${time}:00`, TZ);
+}
+
+/** True once the meal has (probably) been eaten. */
+export function mealOver(meal: { date: string; slot: "lunch" | "dinner" }, now = new Date()): boolean {
+  return now >= romeToUtc(meal.date, MEAL_OVER[meal.slot]);
 }
 
 export function formatRome(d: Date, fmt: string): string {
