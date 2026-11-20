@@ -4,7 +4,7 @@ import { requireMember } from "@/lib/auth";
 import { loadGroup, sortMeals } from "@/lib/data";
 import { computeBalances } from "@/lib/ledger";
 import { formatEuro } from "@/lib/money";
-import { formatDay, todayRome } from "@/lib/time";
+import { formatDay, mealOver, todayRome } from "@/lib/time";
 import { MealRow, NextMealCard, joinLabel } from "@/components/MealCard";
 import { Avatar } from "@/components/Avatar";
 import { SubmitButton } from "@/components/ui";
@@ -24,17 +24,18 @@ export default async function MealsPage() {
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((s) => g.memberById.get(s.memberId)!)
       .filter(Boolean);
-  const upcoming = sortMeals(g.meals.filter((m) => m.date >= today && m.status !== "cancelled"));
+  // Today's lunch drops out of "next up" once it's over, so the card moves on to dinner.
+  const upcoming = sortMeals(g.meals.filter((m) => m.date >= today && m.status !== "cancelled" && !mealOver(m)));
   const [next, ...later] = upcoming;
   const myBalance = computeBalances(g.ledger).get(me.id) ?? 0;
   const label = (m: Meal) => `${m.slot === "lunch" ? "lunch" : "dinner"} ${formatDay(m.date)}`;
   const ate = (m: Meal) => g.signups.some((s) => s.mealId === m.id && s.memberId === me.id);
 
-  // Nudges for meals in the past week, most recent first.
+  // Nudges for meals in the past week (including ones already over today), most recent first.
   const weekAgo = todayRome(new Date(Date.now() - 7 * 864e5));
   const yesterday = todayRome(new Date(Date.now() - 864e5));
   const recent = sortMeals(
-    g.meals.filter((m) => m.status !== "cancelled" && m.date >= weekAgo && m.date < today),
+    g.meals.filter((m) => m.status !== "cancelled" && m.date >= weekAgo && (m.date < today || mealOver(m))),
     -1,
   );
   const todos: Todo[] = [];
